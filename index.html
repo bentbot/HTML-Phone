@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title></title>
+	<script type="text/javascript" src="./SIPml-api.js"></script>
+	<script src="https://code.jquery.com/jquery-2.2.4.min.js" integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44=" crossorigin="anonymous"></script>
+	<script type="text/javascript">
+
+		var host='sip.janglehost.com'
+		var username = '401';
+		var password='2c3a0cdbbb70f63b7b5e592320cd8466';
+
+		var sipStack, session, oSipSessionRegister, _ci;
+		var errorCallback = function(e){
+			console.error('Failed to initialize the engine: ' + e.message);
+		}
+		var onSipEventSession = function(e){
+			console.log(e);
+			switch(e.type) {
+				case 'connected':
+					$('.status').html('Registered.');
+				break;
+
+			}
+		}
+		var eventsListener = function(e){
+			console.log(e); if(_ci)clearInterval(_ci);
+			if(e.type == 'started'){
+				console.log('started');
+				oSipSessionRegister = sipStack.newSession('register', {
+	                expires: 200,
+	                events_listener: { events: '*', listener: onSipEventSession },
+	                sip_caps: [
+                        { name: '+g.oma.sip-im', value: null },
+                        //{ name: '+sip.ice' }, // rfc5768: FIXME doesn't work with Polycom TelePresence
+                        { name: '+audio', value: null },
+                        { name: 'language', value: '\"en,fr\"' }
+	                ]
+            	});
+            	oSipSessionRegister.register();
+			} else if(e.type == 'i_new_message'){ // incoming new SIP MESSAGE (SMS-like)
+				session = e.newSession;
+                console.log('NEW MESSAGE',e);
+                var message = e.getContentString();
+                var type = e.getContentType();
+                console.log(message, type);
+                $('.status').html('New Message!');
+			} else if(e.type == 'i_new_call'){ // incoming audio/video call
+				session = e.newSession;
+				console.log('NEW CALL',e);
+				$('.status').html('Incoming Call!');
+			} 
+			switch(e.type) {
+				case 'm_permission_requested':
+					$('.status').html('Requesting Authorization');
+				break;
+				case 'm_permission_accepted':
+					$('.status').html('Connecting... Please Wait.');
+					_ci=setInterval( () => { 
+						$('.status').html($('.status').html()+'.');
+					},1000)
+				break;
+				case 'm_stream_audio_remote_added':
+					if(e.description=='In Call') $('.status').html('In Call');
+				break;
+				case 'connected':
+					if(e.description=='In Call') $('.status').html('Connected.');
+				break;
+				case 'i_ao_request':
+					if(e.description=='Trying') $('.status').html('Connected.');
+					if(e.description=='Ringing') $('.status').html('Ringing...');
+				break;
+				case 'terminated':
+					$('.status').html('Call Over.');
+					setTimeout( () => { $('.status').html('Ready.'); }, 5000);
+				break;
+			}
+		}
+		var readyCallback = function(e){
+			sipStack = new SIPml.Stack({
+				realm: host,
+				impi: username,
+				impu: 'sip:'+username+'@'+host,
+				password: password,
+				websocket_proxy_url: 'wss://'+host+':8089/ws',
+				outbound_proxy_url: 'udp://'+host+':5060',
+				events_listener: { events: '*', listener: eventsListener }
+			});
+			sipStack.start();
+		};
+		var audioRemote;
+		var oConfigCall;
+		$(window).load(function(){
+            audioRemote = document.getElementById("audio_remote");
+			oConfigCall = {
+                audio_remote: audioRemote,
+                bandwidth: { audio: undefined, video: undefined },
+                events_listener: { events: '*', listener: eventsListener },
+                video_size: { minWidth: undefined, minHeight: undefined, maxWidth: undefined, maxHeight: undefined }
+            };
+			SIPml.init(readyCallback, errorCallback);
+			$(".call100").click( function(e){
+				session = sipStack.newSession('call-audio',oConfigCall); // : 'call-audiovideo'
+				session.call('100');
+				$('.status').html('Calling 100.');
+			});
+			$(".call101").click( function(e){
+				session = sipStack.newSession('call-audio',oConfigCall); // : 'call-audiovideo'
+				session.call('101');
+				$('.status').html('Calling 101.');
+			});
+			$(".call901").click( function(e){
+				session = sipStack.newSession('call-audio',oConfigCall); // : 'call-audiovideo'
+				session.call('901');
+				$('.status').html('Calling 901.');
+			});
+			$(".call902").click( function(e){
+				session = sipStack.newSession('call-audio',oConfigCall); // : 'call-audiovideo'
+				session.call('902');
+				$('.status').html('Calling 902.');
+			});
+			$(".call903").click( function(e){
+				session = sipStack.newSession('call-audio',oConfigCall); // : 'call-audiovideo'
+				session.call('903');
+				$('.status').html('Calling 903.');
+			});
+			$(".dial").click( function(e){
+				var value = $(".value").val();
+				session = sipStack.newSession('call-audio',oConfigCall); // : 'call-audiovideo'
+				session.call(value);
+				$('.status').html('Dialing...');
+			});
+			$(".hangup").click( function(e){
+				session.hangup();
+				$('.status').html('');
+			});
+			$(".answer").click( function(e){
+				$('.status').html('Call Answered.');
+				session.accept(oConfigCall);
+			});
+			$(".reject").click( function(e){
+				$('.status').html('Done.');
+				session.reject();
+			});
+		});
+	</script>
+</head>
+<body>
+	<h1>Line 401</h1>
+	<input type="tel" name="value" class="value">
+	<button class="dial">Dial</button>
+	<button class="call100">Call 100</button>
+	<button class="call101">Call 101</button>
+	<button class="call901">Call 901</button>
+	<button class="call902">Call 902</button>
+	<button class="call903">Call 903</button>
+	<button class="hangup">Hangup</button>
+	<button class="reject">Reject</button>
+	<button class="answer">Answer</button>
+	<br />
+	<br />
+	<div class="status"></div>
+	<br />
+	<br />
+	<audio id="audio_remote" autoplay="autoplay"></audio>
+</body>
+</html>
